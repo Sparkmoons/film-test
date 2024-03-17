@@ -100,11 +100,25 @@ func DelActor(w http.ResponseWriter, r *http.Request) {
 
 // Получение списка фильмов
 func GetMovies(w http.ResponseWriter, r *http.Request) {
+	sortField := r.URL.Query().Get("sort_field")
+	sortOrder := r.URL.Query().Get("sort_order")
+
+	if sortField == "" {
+		sortField = "rate"
+	}
+	if sortOrder == "" {
+		sortOrder = "desc"
+	}
+
+	if sortOrder != "asc" && sortOrder != "desc" {
+		http.Error(w, "Not correct sort order", http.StatusBadRequest)
+		return
+	}
 	rows, err := db.Query(`SELECT m.id, m.name, m.description, m.release, m.rate, a.id, a.name, a.gender, a.birth
 	FROM movies m
 	LEFT JOIN movie_actors ma ON m.id = ma.movie_id
 	LEFT JOIN actors a ON ma.actor_id = a.id
-	`)
+	ORDER BY $1 $2`, sortField, sortOrder)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
