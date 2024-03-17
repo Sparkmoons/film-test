@@ -24,7 +24,11 @@ type Movie struct {
 // Получение списка актеров
 func GetActors(w http.ResponseWriter, r *http.Request) {
 	actors := make([]Actor, 0)
-	rows, err := db.Query("SELECT id, name, gender, birth from actors")
+	rows, err := db.Query(`SELECT a.id, a.name, a.gender, a.birth_date, m.id, m.title, m.description, m.release_date, m.rating
+		FROM actors a
+		LEFT JOIN movie_actors ma ON a.id = ma.actor_id
+		LEFT JOIN movies m ON ma.movie_id = m.id
+	`)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -32,13 +36,43 @@ func GetActors(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
+	actorsMap := make(map[int]*Actor)
+
 	for rows.Next() {
-		var act Actor
-		if err := rows.Scan(&act.ID, &act.Name, &act.Gender, &act.Birth); err != nil {
+		var actorID int
+		var actorName, actorGender, actorBirth string
+		var movieID int
+		var movieName, movieDescription, movieRelease string
+		var movieRate int
+
+		err := rows.Scan(&actorID, &actorName, &actorGender, &actorBirth, &movieID, &movieName, &movieDescription, &movieRelease, &movieRate)
+
+		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		actors = append(actors, act)
+
+		if _, ok := actorsMap[actorID]; !ok {
+			actorsMap[actorID] = &Actor{
+				ID:     actorID,
+				Name:   actorName,
+				Gender: actorGender,
+				Birth:  actorBirth,
+				Movies: make([]Movie, 0),
+			}
+		}
+
+		actorsMap[actorID].Movies = append(actorsMap[actorID].Movies, Movie{
+			ID:          movieID,
+			Name:        movieName,
+			Description: movieDescription,
+			Release:     movieRelease,
+			Rate:        movieRate,
+		})
+	}
+
+	for _, act := range actorsMap {
+		actors = append(actors, *act)
 	}
 	json.NewEncoder(w).Encode(actors)
 }
@@ -110,16 +144,34 @@ func GetMovies(w http.ResponseWriter, r *http.Request) {
 		sortOrder = "desc"
 	}
 
+	searchMovie := r.URL.Query().Get("movie")
+	searchActor := r.URL.Query().Get("actor")
+
 	if sortOrder != "asc" && sortOrder != "desc" {
 		http.Error(w, "Not correct sort order", http.StatusBadRequest)
 		return
 	}
-	rows, err := db.Query(`SELECT m.id, m.name, m.description, m.release, m.rate, a.id, a.name, a.gender, a.birth
-	FROM movies m
-	LEFT JOIN movie_actors ma ON m.id = ma.movie_id
-	LEFT JOIN actors a ON ma.actor_id = a.id
-	ORDER BY $1 $2`, sortField, sortOrder)
 
+	q := fmt.Sprintf(`SELECT m.id, m.name, m.description, m.release, m.rate, a.id, a.name, a.gender, a.birth
+		FROM movies m
+		LEFT JOIN movie_actors ma ON m.id = ma.movie_id
+		LEFT JOIN actors a ON ma.actor_id = a.id 
+		ORDER BY %s %s`, sortField, sortOrder)
+
+	if searchMovie != "" || searchActor != "" {
+		switch {
+		case searchMovie != "" && searchActor != "":
+			q += fmt.Sprintf(` WHERE m.name LIKE '%%%s%%' OR a.name LIKE '%%%s%%'`, searchMovie, searchActor)
+
+		case searchMovie != "":
+			q += fmt.Sprintf(` WHERE m.name LIKE '%%%s%%'`, searchMovie)
+
+		case searchActor != "":
+			q += fmt.Sprintf(` WHERE a.name LIKE '%%%s%%'`, searchActor)
+		}
+	}
+
+	rows, err := db.Query(q)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
