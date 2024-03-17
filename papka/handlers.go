@@ -222,7 +222,7 @@ func GetMovies(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(movies)
 }
 
-// Добавление ифнормации о фильме
+// Добавление информации о фильме
 func AddMovie(w http.ResponseWriter, r *http.Request) {
 	var movie Movie
 
@@ -259,7 +259,7 @@ func AddMovie(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
-// Изменение ифнормации о фильме
+// Изменение информации о фильме
 func UpdMovie(w http.ResponseWriter, r *http.Request) {
 	var movie Movie
 
